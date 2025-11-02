@@ -585,7 +585,7 @@ def require_admin():
 
 
 try:
-    PG = st.secrets["postgres"]
+    PG = st.secrets["PG"]
 except KeyError:
     st.error("⚠️ Falta configuración de PostgreSQL en secrets.toml")
     st.code("""
