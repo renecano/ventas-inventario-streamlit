@@ -548,7 +548,7 @@ with st.sidebar:
     st.write(f"👤 {st.session_state['user']['name']} · Rol: **{st.session_state['user']['role']}**")
 
     # 🔒 Botón completo para cerrar sesión y borrar cookies correctamente
-    if st.button("Cerrar sesión", use_container_width=True):
+    if st.button("Cerrar sesión", width="stretch"):
         _do_logout()
 
 
@@ -1803,7 +1803,7 @@ elif page == "Ventas":
                         file_name=f"ticket_{int(sale_id_for_ticket)}.pdf",
                         mime="application/pdf",
                         key=f"dl_ticket_{int(sale_id_for_ticket)}",
-                        use_container_width=True
+                        width="stretch"
                     )
                 except Exception as e:
                     st.error(f"Error al generar el PDF: {e}")
