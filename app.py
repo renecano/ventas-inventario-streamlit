@@ -4,18 +4,17 @@ import pandas as pd
 import streamlit as st
 import bcrypt
 import os, time, hmac, hashlib, base64
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import io, zipfile
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
-import time
 import altair as alt
 import psycopg2
 import psycopg2.extras
 import streamlit.components.v1 as components
-from streamlit_cookies_manager import EncryptedCookieManager
+from extra_streamlit_components import CookieManager
 
 
 
@@ -367,13 +366,7 @@ REMEMBER_DAYS = 7
 AUTH_COOKIE_NAME = "auth_token"
 SKIP_COOKIE_ONCE_KEY = "_skip_cookie_once"
 
-cookies = EncryptedCookieManager(
-    prefix="myapp_",
-    password=REMEMBER_SECRET
-)
-
-if not cookies.ready():
-    st.stop()  # Espera a que las cookies carguen
+cookies = CookieManager(key="myapp_auth")
 
 CREDENTIALS = {
     "usernames": {
@@ -464,13 +457,13 @@ def _do_login(username: str):
 
 def _do_logout():
     """Cierra sesión de forma limpia"""
-    # Borra cookie
-    if AUTH_COOKIE_NAME in cookies:
-        del cookies[AUTH_COOKIE_NAME]
-    cookies.save()
-    
+    # Borra cookie si existe
+    if cookies.get(AUTH_COOKIE_NAME):
+        cookies.delete(AUTH_COOKIE_NAME)
+
     st.session_state.clear()
     st.rerun()
+
 
 def login_ui():
     """Pantalla de login"""
@@ -485,26 +478,31 @@ def login_ui():
 
     if submitted:
         u_n = (u or "").strip().lower()
-        
+
         if _check_password(u_n, p):
             _do_login(u_n)
 
             if remember:
                 token = _create_token(u_n, REMEMBER_DAYS)
-                cookies[AUTH_COOKIE_NAME] = token
-                cookies.save()
+                # Guarda cookie por REMEMBER_DAYS
+                cookies.set(
+                    AUTH_COOKIE_NAME,
+                    token,
+                    expires_at=datetime.utcnow() + timedelta(days=REMEMBER_DAYS),
+                )
             else:
-                if AUTH_COOKIE_NAME in cookies:
-                    del cookies[AUTH_COOKIE_NAME]
-                cookies.save()
+                # Si no desea recordar sesión, elimina la cookie si existe
+                if cookies.get(AUTH_COOKIE_NAME):
+                    cookies.delete(AUTH_COOKIE_NAME)
 
             st.rerun()
         else:
+            # login fallido: limpia sesión y cookie si existía
             st.session_state.pop("user", None)
-            if AUTH_COOKIE_NAME in cookies:
-                del cookies[AUTH_COOKIE_NAME]
-            cookies.save()
+            if cookies.get(AUTH_COOKIE_NAME):
+                cookies.delete(AUTH_COOKIE_NAME)
             st.error("❌ Usuario o contraseña incorrectos.")
+
 
 
 
@@ -531,17 +529,6 @@ if not is_logged:
     login_ui()
     st.stop()
 
-st.session_state.pop("_login_success", None)
-
-# Verificación de sesión
-user_session = st.session_state.get("user", {})
-is_logged = user_session.get("logged") == True
-
-if not is_logged:
-    login_ui()
-    st.stop()
-
-# Si acabamos de hacer login exitoso, limpiamos el flag
 st.session_state.pop("_login_success", None)
 
 
@@ -582,10 +569,8 @@ def require_admin():
 # 2) DB y helpers (PostgreSQL)
 # ============================
 
-
-
 try:
-    PG = st.secrets["PG"]
+    PG = st.secrets["postgres"]
 except KeyError:
     st.error("⚠️ Falta configuración de PostgreSQL en secrets.toml")
     st.code("""
@@ -600,6 +585,7 @@ except KeyError:
     """)
     st.stop()
 
+
 def _conn_kwargs():
     return dict(
         host=PG["host"],
@@ -607,7 +593,7 @@ def _conn_kwargs():
         dbname=PG["dbname"],
         user=PG["user"],
         password=PG["password"],
-        sslmode=PG.get("sslmode", "prefer"),
+        sslmode=PG.get("sslmode", "require"),
     )
 
 @st.cache_resource
@@ -616,9 +602,9 @@ def _sa_engine():
         "postgresql+psycopg2://"
         f"{quote_plus(PG['user'])}:{quote_plus(PG['password'])}"
         f"@{PG['host']}:{int(PG.get('port', 5432))}/{PG['dbname']}"
-        f"?sslmode={PG.get('sslmode', 'prefer')}"
+        f"?sslmode={PG.get('sslmode', 'require')}"
     )
-    return create_engine(url, pool_pre_ping=True)
+    return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=5, )
 
 
 
@@ -945,7 +931,7 @@ def record_purchase(items, supplier=None, note="", create_expense=False, update_
                 if create_expense and total > 0:
                     cur.execute(
                         'INSERT INTO expenses ("date", category, amount, note) VALUES (%s, %s, %s, %s)',
-                        (now, "Compras", float(total), f"Compra a {supplier or "Proveedor"}")
+                        (now, "Compras", float(total), f"Compra a {supplier or 'Proveedor'}")
                     )
 
         return True
@@ -1391,13 +1377,19 @@ def create_backup_zip() -> io.BytesIO:
 
 
 
-# Usa esto
-@alt.theme.register('nice', enable=True)
+# Tema Altair
+@alt.themes.register('nice')
 def nice_theme():
-    return alt.theme.ThemeConfig({
-        "config": {"view": {"stroke": "transparent"}},
-        "height": 400, "width": "container"
-    })
+    # Puedes devolver un dict; no es necesario ThemeConfig
+    return {
+        "config": {
+            "view": {"stroke": "transparent"}
+        }
+    }
+
+# Activar el tema
+alt.themes.enable('nice')
+
 
 
 
