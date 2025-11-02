@@ -1377,17 +1377,17 @@ def create_backup_zip() -> io.BytesIO:
 
 
 
-# Tema Altair
-@alt.themes.register('nice')
 def nice_theme():
-    # Puedes devolver un dict; no es necesario ThemeConfig
     return {
         "config": {
-            "view": {"stroke": "transparent"}
-        }
+            "view": {"stroke": "transparent"},
+        },
+        "height": 400,
+        "width": "container",
     }
 
-# Activar el tema
+# Registrar y habilitar (sin decorador y sin enable= en el decorador)
+alt.themes.register('nice', nice_theme)
 alt.themes.enable('nice')
 
 
